@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>忆声守护 · 系统数据链动画</title>
+  <link rel="stylesheet" href="animation.css">
+</head>
+<body class="index-page">
+  <main class="index-content">
+    <p class="eyebrow">ALZHEIMER'S VOICE ASSISTANT · LIVE ARCHITECTURE</p>
+    <h1>让数据链<br>自己讲故事</h1>
+    <p>两套动画完全依据当前项目实现：一条问题如何穿过 RAG 检索并流式返回；多条看图说话音频如何经 RabbitMQ 和隔离线程池并行处理，最终形成 PDF。</p>
+    <div class="nav-grid">
+      <article class="nav-card" style="--glow: var(--cyan)">
+        <span class="number">ANIMATION 01</span>
+        <h2>RAG 检索数据链</h2>
+        <p>切换“向量命中 / 本地降级 / 联网回退”三种场景，观察记忆、路由、Embedding、Qdrant、Prompt 和 SSE。</p>
+        <a href="rag-retrieval.html">打开动画 →</a>
+      </article>
+      <article class="nav-card" style="--glow: var(--purple)">
+        <span class="number">ANIMATION 02</span>
+        <h2>异步筛查并发流水线</h2>
+        <p>三条音频任务同时进入系统，展示 Outbox、RabbitMQ、Python Worker、Java 结果线程与单 PDF 线程的协作。</p>
+        <a href="async-screening.html">打开动画 →</a>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

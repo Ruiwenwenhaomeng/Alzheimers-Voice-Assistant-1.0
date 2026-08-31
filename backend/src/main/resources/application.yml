@@ -1,0 +1,130 @@
+server:
+  address: 0.0.0.0
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force-response: true
+
+spring:
+
+  mvc:
+    async:
+      # The first vector bootstrap plus the model response can exceed the
+      # servlet container's short default async timeout.
+      request-timeout: ${RAG_STREAM_REQUEST_TIMEOUT:5m}
+
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
+
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/alz_system?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${DB_USERNAME:ZhangYu}
+    password: ${DB_PASSWORD:zy6724845}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    virtual-host: ${RABBITMQ_VHOST:/alz}
+    username: ${RABBITMQ_USERNAME:alz_app}
+    password: ${RABBITMQ_PASSWORD:alz_dev_password}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    listener:
+      simple:
+        acknowledge-mode: auto
+        prefetch: ${RABBIT_PREFETCH:1}
+        default-requeue-rejected: false
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+
+app:
+  storage:
+    audio-dir: ${AUDIO_STORAGE_DIR:data/audio}
+    pdf-dir: ${PDF_STORAGE_DIR:data/pdf}
+    admin-audio-dir: ${ADMIN_AUDIO_STORAGE_DIR:data/admin_audio}
+    screening-artifact-dir: ${SCREENING_ARTIFACT_DIR:data/screening-artifacts}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+  python:
+    diagnosis-url: ${PYTHON_DIAGNOSIS_URL:http://127.0.0.1:5000/api/diagnosis}
+    connect-timeout-ms: ${PYTHON_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${PYTHON_READ_TIMEOUT_MS:120000}
+  deepseek:
+    enabled: ${DEEPSEEK_ENABLED:false}
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    anthropic-base-url: ${DEEPSEEK_ANTHROPIC_BASE_URL:https://api.deepseek.com/anthropic}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+    max-tokens: ${DEEPSEEK_MAX_TOKENS:700}
+    connect-timeout-ms: ${DEEPSEEK_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${DEEPSEEK_READ_TIMEOUT_MS:20000}
+    web-search-enabled: ${DEEPSEEK_WEB_SEARCH_ENABLED:false}
+    web-search-max-uses: ${DEEPSEEK_WEB_SEARCH_MAX_USES:3}
+  rag:
+    top-k: ${RAG_TOP_K:4}
+    local:
+      min-score: ${RAG_LOCAL_MIN_SCORE:16}
+    memory:
+      max-turns: ${RAG_MEMORY_MAX_TURNS:100}
+      summary-interval: ${RAG_MEMORY_SUMMARY_INTERVAL:10}
+      rolling-summary-max-chars: ${RAG_MEMORY_SUMMARY_MAX_CHARS:1800}
+      cache-ttl-minutes: ${RAG_MEMORY_CACHE_TTL_MINUTES:1440}
+      generation-timeout-seconds: ${RAG_MEMORY_GENERATION_TIMEOUT_SECONDS:180}
+      summary-concurrency: ${RAG_MEMORY_SUMMARY_CONCURRENCY:2}
+      summary-queue-capacity: ${RAG_MEMORY_SUMMARY_QUEUE_CAPACITY:100}
+
+    vector:
+      enabled: ${RAG_VECTOR_ENABLED:false}
+      base-url: ${QDRANT_BASE_URL:http://127.0.0.1:6333}
+      api-key: ${QDRANT_API_KEY:}
+      collection: ${QDRANT_COLLECTION:alz_ad_knowledge}
+      score-threshold: ${RAG_VECTOR_SCORE_THRESHOLD:0.72}
+      bootstrap: ${RAG_VECTOR_BOOTSTRAP:true}
+      warmup-enabled: ${RAG_VECTOR_WARMUP_ENABLED:true}
+      payload-index-enabled: ${RAG_VECTOR_PAYLOAD_INDEX_ENABLED:true}
+
+    embedding:
+      enabled: ${RAG_EMBEDDING_ENABLED:false}
+      base-url: ${RAG_EMBEDDING_BASE_URL:http://127.0.0.1:7997/v1}
+      api-key: ${RAG_EMBEDDING_API_KEY:}
+      model: ${RAG_EMBEDDING_MODEL:BAAI/bge-m3}
+      connect-timeout-ms: ${RAG_EMBEDDING_CONNECT_TIMEOUT_MS:3000}
+      read-timeout-ms: ${RAG_EMBEDDING_READ_TIMEOUT_MS:30000}
+
+  screening:
+    model-version: ${DEEPSEEK_SCREENING_MODEL:deepseek-v4-flash}
+    require-ai: ${SCREENING_REQUIRE_AI:false}
+    async:
+      enabled: ${SCREENING_ASYNC_ENABLED:false}
+      outbox-delay-ms: ${SCREENING_OUTBOX_DELAY_MS:1000}
+      outbox-batch-size: ${SCREENING_OUTBOX_BATCH_SIZE:20}
+      publisher-confirm-timeout-ms: ${SCREENING_PUBLISH_CONFIRM_TIMEOUT_MS:5000}
+      result-concurrency: ${SCREENING_RESULT_CONCURRENCY:2}
+      status-concurrency: ${SCREENING_STATUS_CONCURRENCY:2}
+      pdf-concurrency: ${PDF_WORKER_CONCURRENCY:1}
+      listener-queue-capacity: ${SCREENING_LISTENER_QUEUE_CAPACITY:20}
+      max-active-per-user: ${SCREENING_USER_MAX_ACTIVE:2}
+      cancel-timeout-ms: ${SCREENING_CANCEL_TIMEOUT_MS:120000}
+      cancel-reconcile-delay-ms: ${SCREENING_CANCEL_RECONCILE_DELAY_MS:5000}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true

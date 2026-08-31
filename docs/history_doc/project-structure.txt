@@ -1,0 +1,50 @@
+﻿alzheimers-voice-assistant
+|-- README.md
+|-- .env.example
+|-- compose.yaml
+|-- backend
+|   |-- pom.xml
+|   |-- mvnw
+|   |-- mvnw.cmd
+|   |-- src
+|   |   |-- main
+|   |   |   |-- java/com/alz
+|   |   |   |   |-- AlzBackendApplication.java
+|   |   |   |   |-- config
+|   |   |   |   |-- controller
+|   |   |   |   |-- dto
+|   |   |   |   |-- entity
+|   |   |   |   |-- exception
+|   |   |   |   |-- mapper
+|   |   |   |   |-- service
+|   |   |   |   |-- validation
+|   |   |   |-- resources
+|   |   |       |-- application.yml
+|   |   |       |-- fonts
+|   |   |       |-- static
+|   |   |-- test/java/com/alz
+|   |       |-- AlzheimersVoiceAssistantApplicationTests.java
+|   |       |-- config
+|   |       |-- controller
+|   |       |-- service
+|   |       |-- validation
+|-- frontend
+|   |-- index.html
+|   |-- app.js
+|   |-- app.css
+|-- screening-service
+|   |-- requirements.txt
+|   |-- app
+|   |-- evaluation
+|   |-- tests
+|-- docs
+|   |-- model-validation.md
+|   |-- product-mvp.md
+|   |-- python-screening-contract.md
+|   |-- safety-and-data-boundary.md
+|   |-- original-project-README.md
+|-- deploy
+|   |-- compose.yaml
+|   |-- mysql/init.sql
+|   |-- mysql/migrations/V002__screening_audit.sql
+|-- data

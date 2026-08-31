@@ -1,0 +1,4 @@
+Flask>=2.3,<4
+# 5.2+ requires Python 3.10; the project's existing mock environment uses Python 3.9.
+sentence-transformers>=5.1,<5.2
+hf-xet>=1.1,<2

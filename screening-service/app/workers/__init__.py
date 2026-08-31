@@ -1,0 +1,1 @@
+"""RabbitMQ screening workers."""

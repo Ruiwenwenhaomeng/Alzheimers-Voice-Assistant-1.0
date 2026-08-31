@@ -1,0 +1,4 @@
+interface:
+  display_name: "AD Question Router"
+  short_description: "Route Alzheimer questions into knowledge domains safely"
+  default_prompt: "Use $ad-question-router to classify an Alzheimer question and return a structured route."

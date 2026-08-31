@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>忆声守护 - 阿尔茨海默病语音筛查与科普助手</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">认知健康 · 早关注 · 早评估</p>
+      <h1>忆声守护</h1>
+      <p class="subtitle">阿尔茨海默病语音风险筛查、看图说话任务与知识科普助手</p>
+    </div>
+    <button id="fontToggle" class="quiet-button" type="button" aria-pressed="false">放大文字</button>
+  </header>
+
+  <aside class="medical-notice" aria-label="重要医疗提示">
+    <strong>重要提示：</strong>本系统只提供风险筛查和健康科普，不能诊断、排除或治疗阿尔茨海默病。
+    突然说话困难、口角歪斜、单侧无力或意识异常时，请立即拨打 120。
+  </aside>
+
+  <nav class="tabs" role="tablist" aria-label="功能选择">
+    <button id="chatTab" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="chatPanel">科普助手</button>
+    <button id="screeningTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="screeningPanel">看图说话录音</button>
+    <button id="workspaceTab" class="tab" type="button" role="tab" aria-selected="false" aria-controls="workspacePanel">历史 / 检测 / AI诊断</button>
+  </nav>
+
+  <main>
+    <section id="chatPanel" class="panel" role="tabpanel" aria-labelledby="chatTab">
+      <div class="section-heading">
+        <div>
+          <p class="step-label">知识普及</p>
+          <h2>有什么想了解的？</h2>
+        </div>
+        <p>回答会附行动建议和权威来源，并保留清晰的医疗边界。</p>
+      </div>
+
+      <div class="assistant-workspace">
+        <aside class="conversation-sidebar" aria-label="对话列表">
+          <div class="conversation-sidebar-heading">
+            <strong>我的对话</strong>
+            <button id="newConversation" class="secondary-button small-button" type="button">新对话</button>
+          </div>
+          <div id="conversationList" class="conversation-list"></div>
+        </aside>
+
+        <div class="conversation-main">
+          <details id="modelSettingsPanel" class="model-settings">
+            <summary>
+              <span>回答模型</span>
+              <span id="activeModelBadge" class="model-badge">系统默认</span>
+            </summary>
+            <form id="modelSettingsForm" class="model-settings-form">
+              <label for="modelProvider">服务商</label>
+              <select id="modelProvider">
+                <option value="SYSTEM">系统默认（start.ps1 配置）</option>
+                <option value="DEEPSEEK">DeepSeek</option>
+                <option value="KIMI">Kimi</option>
+                <option value="GLM">智谱 GLM</option>
+                <option value="QWEN">通义千问</option>
+              </select>
+              <label for="modelName">模型名称</label>
+              <input id="modelName" maxlength="100" spellcheck="false" autocomplete="off">
+              <label for="modelApiKey">API Key</label>
+              <input id="modelApiKey" type="password" maxlength="1024" spellcheck="false" autocomplete="off" placeholder="请输入所选服务商的 API Key">
+              <div class="button-row">
+                <button id="saveModelSettings" class="secondary-button small-button" type="submit">保存并切换</button>
+                <button id="toggleModelApiKey" class="quiet-button small-button" type="button">显示 Key</button>
+                <button id="clearModelApiKey" class="quiet-button small-button" type="button">清除此 Key</button>
+              </div>
+              <p id="modelSettingsStatus" class="status-text" aria-live="polite"></p>
+              <p class="model-security-note">设置按当前账号或匿名浏览器 ID 隔离，仅保存在此浏览器。本次提问时 Key 会发送给本机后端并仅在请求内使用，不写入对话或数据库。请勿在公共电脑保存。</p>
+            </form>
+          </details>
+
+          <div class="conversation-status">
+            <strong id="currentConversationTitle">新对话</strong>
+            <span id="conversationTurnCount">0 / 100 轮</span>
+          </div>
+
+          <div class="quick-questions" aria-label="常见问题">
+            <button type="button" data-question="最近总忘事，是阿尔茨海默病吗？">总忘事怎么办</button>
+            <button type="button" data-question="语音筛查可以确诊吗？">语音筛查靠谱吗</button>
+            <button type="button" data-question="如何降低阿尔茨海默病风险？">如何管理风险</button>
+            <button type="button" data-question="家属应该怎样照护和沟通？">家庭照护建议</button>
+          </div>
+
+          <div id="chatMessages" class="chat-messages" aria-live="polite" aria-label="对话内容"></div>
+
+          <form id="chatForm" class="chat-form">
+            <label for="chatInput">输入问题</label>
+            <textarea id="chatInput" rows="3" maxlength="500" placeholder="例如：出现哪些变化应该去医院？" required></textarea>
+            <button id="chatSend" class="primary-button" type="submit" disabled>发送问题</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section id="screeningPanel" class="panel" role="tabpanel" aria-labelledby="screeningTab" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="step-label">看图说话 · 语音风险筛查</p>
+          <h2>观察图片并自然讲述</h2>
+        </div>
+        <p>先选择一张图片，随后连续讲述约 30 到 90 秒；也可以上传已有 PCM WAV 文件。</p>
+      </div>
+
+      <div class="migration-strip" aria-label="原前端已迁移功能">
+        <span><strong>三张图片选择</strong> test.jpg / test1.jpg / test2.jpg</span>
+        <span><strong>录音与音频上传</strong> 浏览器录音或上传 WAV</span>
+        <span><strong>Python 检测</strong> 调用 /user/detect</span>
+        <span><strong>AI 辅助检测</strong> 调用 /audio/diagnosis</span>
+      </div>
+
+      <section id="authCard" class="card auth-card">
+        <h3>先登录以保护筛查记录</h3>
+        <form id="loginForm" class="stack-form">
+          <label for="username">用户名</label>
+          <input id="username" name="username" autocomplete="username" required>
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <div class="button-row">
+            <button class="primary-button" type="submit">登录</button>
+            <button id="registerButton" class="secondary-button" type="button">注册新账号</button>
+          </div>
+        </form>
+        <p id="authStatus" class="status-text" aria-live="polite"></p>
+      </section>
+
+      <section id="screeningWorkspace" hidden>
+        <div class="session-bar">
+          <span id="loginIdentity">已登录</span>
+          <button id="logoutButton" class="quiet-button" type="button">退出登录</button>
+        </div>
+
+        <ol class="screening-steps">
+          <li>
+            <h3>阅读并同意</h3>
+            <label class="consent-row">
+              <input id="consentCheckbox" type="checkbox">
+              <span>我理解语音、转写和图片任务记录属于敏感健康信息，本次结果仅作风险提示，不能替代医生诊断。</span>
+            </label>
+          </li>
+          <li>
+            <h3>选择看图说话任务</h3>
+            <div class="picture-task">
+              <div>
+                <label for="imageSelect">图片任务</label>
+                <select id="imageSelect"></select>
+                <p id="imageHint" class="hint-text"></p>
+              </div>
+              <img id="taskImage" class="task-image" alt="看图说话任务图片">
+            </div>
+          </li>
+          <li>
+            <h3>开始讲述</h3>
+            <div class="recorder-card">
+              <div id="recordingIndicator" class="recording-indicator" aria-live="polite">
+                <span class="recording-dot"></span>
+                <span id="recordingText">尚未开始录音</span>
+                <strong id="recordingTime">00:00</strong>
+              </div>
+              <div class="button-row">
+                <button id="startRecording" class="primary-button" type="button">开始录音</button>
+                <button id="stopRecording" class="danger-button" type="button" disabled>停止录音</button>
+              </div>
+              <p class="or-divider"><span>或者</span></p>
+              <label for="audioFile">选择已有 PCM WAV 文件</label>
+              <input id="audioFile" type="file" accept="audio/wav,.wav">
+              <audio id="audioPreview" controls hidden></audio>
+            </div>
+          </li>
+          <li>
+            <h3>上传并分析</h3>
+            <div class="button-row">
+              <button id="uploadAudio" class="primary-button" type="button" disabled>上传录音</button>
+              <button id="refreshHistory" class="secondary-button" type="button">刷新历史录音</button>
+            </div>
+            <p id="screeningStatus" class="status-text" aria-live="polite"></p>
+            <div id="audioHistory" class="audio-history"></div>
+          </li>
+        </ol>
+
+        <section id="resultCard" class="result-card" hidden aria-live="polite">
+          <div class="result-heading">
+            <div>
+              <p class="step-label">筛查结果</p>
+              <h3 id="resultTitle">需要人工复核</h3>
+            </div>
+            <span id="resultBadge" class="result-badge">结果未定</span>
+          </div>
+          <p id="resultBoundary" class="result-boundary"></p>
+          <dl class="result-grid">
+            <div><dt>风险等级</dt><dd id="riskLevel">-</dd></div>
+            <div><dt>风险指标</dt><dd id="riskScore">-</dd></div>
+            <div><dt>录音质量</dt><dd id="qualityPassed">-</dd></div>
+            <div><dt>模型版本</dt><dd id="modelVersion">-</dd></div>
+          </dl>
+          <div class="result-section"><h4>结果解释</h4><p id="reportText"></p></div>
+          <div class="result-section"><h4>录音或任务提示</h4><ul id="qualityIssues"></ul></div>
+          <div class="result-section"><h4>可解释特征</h4><ul id="featureHighlights"></ul></div>
+          <div class="result-section"><h4>语音转写</h4><p id="transcriptionText"></p></div>
+          <div class="result-section"><h4>下一步建议</h4><ul id="recommendedActions"></ul></div>
+        </section>
+      </section>
+    </section>
+
+    <section id="workspacePanel" class="panel" role="tabpanel" aria-labelledby="workspaceTab" hidden>
+      <div class="section-heading">
+        <div>
+          <p class="step-label">功能中心</p>
+          <h2>资料、录音、检测与管理</h2>
+        </div>
+        <p>这里承接旧前端按钮对应的接口功能，并使用当前页面的视觉风格。</p>
+      </div>
+
+      <section id="workspaceLoginNotice" class="card">
+        <h3>请先登录</h3>
+        <p>登录后可查看历史录音、音频上传结果、Python 检测、AI 辅助诊断报告和管理员工具。</p>
+      </section>
+
+      <section id="workspaceContent" hidden>
+        <div class="feature-nav" aria-label="功能导航">
+          <button class="secondary-button" type="button" data-view="profileView">个人信息</button>
+          <button class="secondary-button" type="button" data-view="audioListView">历史录音</button>
+          <button class="secondary-button" type="button" data-view="detectView">Python 检测</button>
+          <button class="secondary-button" type="button" data-view="diagnosisView">AI 辅助检测 / PDF</button>
+          <button class="secondary-button admin-only" type="button" data-view="adminView" hidden>管理员工具</button>
+        </div>
+
+        <section id="profileView" class="workspace-view">
+          <h3>个人信息</h3>
+          <form id="profileForm" class="form-grid">
+            <label>姓名<input name="name"></label>
+            <label>性别<input name="gender"></label>
+            <label>年龄<input name="age" type="number" min="0" max="130"></label>
+            <label>电话<input name="phone"></label>
+            <label class="wide">病史<textarea name="medicalHistory" rows="3"></textarea></label>
+            <label>MMSE<input name="mmse" type="number" disabled></label>
+            <label>MOCA<input name="moca" type="number" disabled></label>
+            <label>HKBC<input name="hkbc" type="number" disabled></label>
+          </form>
+          <div class="button-row">
+            <button id="saveProfile" class="primary-button" type="button">保存个人信息</button>
+            <button id="loadProfile" class="secondary-button" type="button">重新加载</button>
+          </div>
+          <hr class="soft-rule">
+          <h4>修改密码</h4>
+          <form id="passwordForm" class="form-grid compact-form">
+            <label>旧密码<input name="oldPassword" type="password"></label>
+            <label>新密码<input name="newPassword" type="password"></label>
+          </form>
+          <button id="changePassword" class="secondary-button" type="button">修改密码</button>
+          <p id="profileStatus" class="status-text" aria-live="polite"></p>
+        </section>
+
+        <section id="audioListView" class="workspace-view" hidden>
+          <div class="view-heading">
+            <h3>历史录音</h3>
+            <button id="loadAudioList" class="secondary-button" type="button">刷新</button>
+          </div>
+          <div id="audioTable" class="data-table"></div>
+          <audio id="historyAudioPlayer" controls hidden></audio>
+          <p id="audioListStatus" class="status-text" aria-live="polite"></p>
+        </section>
+
+        <section id="detectView" class="workspace-view" hidden>
+          <h3>Python 语音检测</h3>
+          <div class="form-grid compact-form">
+            <label>选择录音<select id="detectAudioSelect"></select></label>
+          </div>
+          <div class="button-row">
+            <button id="runDetect" class="primary-button" type="button">开始 Python 检测</button>
+            <button id="refreshDetectAudio" class="secondary-button" type="button">刷新录音</button>
+          </div>
+          <div id="detectResult" class="metric-strip" hidden></div>
+          <p id="detectStatus" class="status-text" aria-live="polite"></p>
+        </section>
+
+        <section id="diagnosisView" class="workspace-view" hidden>
+          <h3>AI 辅助检测与 PDF 报告</h3>
+          <div class="form-grid compact-form">
+            <label>选择录音<select id="diagnosisAudioSelect"></select></label>
+          </div>
+          <div class="button-row">
+            <button id="runDiagnosis" class="primary-button" type="button">生成 AI 辅助诊断报告</button>
+            <button id="savePdf" class="secondary-button" type="button" disabled>保存 PDF 报告</button>
+            <button id="refreshPdfList" class="secondary-button" type="button">刷新历史报告</button>
+          </div>
+          <p id="diagnosisStatus" class="status-text" aria-live="polite"></p>
+          <div id="diagnosisPreview" class="report-preview" hidden></div>
+          <h4>历史 PDF 报告</h4>
+          <div id="pdfTable" class="data-table"></div>
+          <div id="historyReportPreview" class="report-preview" hidden></div>
+        </section>
+
+        <section id="adminView" class="workspace-view" hidden>
+          <h3>管理员工具</h3>
+          <div class="feature-nav sub-nav">
+            <button class="secondary-button" type="button" data-admin-view="adminUsersPanel">用户列表</button>
+            <button class="secondary-button" type="button" data-admin-view="adminManagePanel">用户管理</button>
+            <button class="secondary-button" type="button" data-admin-view="adminAudioPanel">音频管理</button>
+            <button class="secondary-button" type="button" data-admin-view="adminUploadPanel">管理员上传</button>
+            <button class="secondary-button" type="button" data-admin-view="adminDetectPanel">管理员 Python 检测</button>
+          </div>
+
+          <section id="adminUsersPanel" class="admin-panel">
+            <div class="view-heading"><h4>用户列表</h4><button id="loadAdminUsers" class="secondary-button" type="button">刷新</button></div>
+            <div id="adminUsersTable" class="data-table"></div>
+          </section>
+
+          <section id="adminManagePanel" class="admin-panel" hidden>
+            <div class="view-heading"><h4>用户管理</h4><button id="loadAdminFullUsers" class="secondary-button" type="button">刷新</button></div>
+            <div id="adminManageTable" class="data-table editable-table"></div>
+          </section>
+
+          <section id="adminAudioPanel" class="admin-panel" hidden>
+            <div class="toolbar-line">
+              <label>用户名<input id="adminAudioUsername"></label>
+              <label>姓名<input id="adminAudioName"></label>
+              <button id="loadAdminAudios" class="secondary-button" type="button">搜索/刷新</button>
+            </div>
+            <div id="adminAudioTable" class="data-table"></div>
+            <audio id="adminAudioPlayer" controls hidden></audio>
+          </section>
+
+          <section id="adminUploadPanel" class="admin-panel" hidden>
+            <label>选择管理员音频<input id="adminUploadFiles" type="file" accept="audio/*,.wav,.webm" multiple></label>
+            <div class="button-row">
+              <button id="uploadAdminAudios" class="primary-button" type="button">上传</button>
+              <button id="loadAdminFiles" class="secondary-button" type="button">刷新管理员文件</button>
+            </div>
+            <div id="adminFileTable" class="data-table"></div>
+            <audio id="adminFilePlayer" controls hidden></audio>
+          </section>
+
+          <section id="adminDetectPanel" class="admin-panel" hidden>
+            <h4>管理员 Python 检测</h4>
+            <div class="form-grid compact-form">
+              <label>管理员音频<select id="adminDetectAudioSelect"></select></label>
+            </div>
+            <div class="button-row">
+              <button id="runAdminDetect" class="primary-button" type="button">开始管理员检测</button>
+              <button id="loadAdminStats" class="secondary-button" type="button">刷新统计</button>
+            </div>
+            <div id="adminDetectResult" class="metric-strip" hidden></div>
+            <p id="adminStats" class="status-text"></p>
+          </section>
+
+          <p id="adminStatus" class="status-text" aria-live="polite"></p>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <p>尊重、耐心、少一些病耻感。担心认知变化时，请尽早与家人和专业医务人员沟通。</p>
+  </footer>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>

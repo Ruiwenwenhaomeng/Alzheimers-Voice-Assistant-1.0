@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG 检索过程动画</title>
+  <link rel="stylesheet" href="animation.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero compact">
+      <a class="back-link" href="index.html">← 返回动画目录</a>
+      <p class="eyebrow">RAG RETRIEVAL · SSE STREAM</p>
+      <h1>一条问题如何变成一段有依据的回答</h1>
+      <p class="hero-copy">动画对应当前项目代码：会话锁与记忆、问题路由、BGE-M3 Embedding、Qdrant / 本地知识库降级、DeepSeek 与 SSE 流式输出。</p>
+    </header>
+
+    <section class="toolbar" aria-label="动画控制器">
+      <div class="control-group">
+        <button id="playButton" class="primary-button" type="button">▶ 播放</button>
+        <button id="stepButton" type="button">单步</button>
+        <button id="resetButton" type="button">重播</button>
+      </div>
+      <label>检索分支
+        <select id="scenarioSelect">
+          <option value="vector">向量检索命中</option>
+          <option value="fallback">Embedding 失败，本地降级</option>
+          <option value="web">知识库无命中，转联网</option>
+        </select>
+      </label>
+      <label>速度
+        <select id="speedSelect">
+          <option value="0.7">0.7×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.6">1.6×</option>
+          <option value="2.2">2.2×</option>
+        </select>
+      </label>
+      <div class="progress-wrap" aria-label="动画进度">
+        <span id="progressText">0 / 12</span>
+        <div class="progress-track"><span id="progressBar"></span></div>
+      </div>
+    </section>
+
+    <section class="demo-grid">
+      <div class="board-card">
+        <div class="board-heading">
+          <div>
+            <span class="section-kicker">LIVE PIPELINE</span>
+            <h2>检索与生成数据链</h2>
+          </div>
+          <span id="scenarioBadge" class="status-pill">向量检索命中</span>
+        </div>
+        <div id="ragBoard" class="flow-board" aria-label="RAG 数据流">
+          <div id="rag-user" class="flow-node" style="--x:0;--y:0"><span class="node-index">01</span><b>用户问题</b><small>浏览器提交消息</small></div>
+          <div id="rag-api" class="flow-node" style="--x:1;--y:0"><span class="node-index">02</span><b>SSE API</b><small>鉴权、会话锁、100 轮边界</small></div>
+          <div id="rag-memory" class="flow-node" style="--x:2;--y:0"><span class="node-index">03</span><b>上下文 Memory</b><small>Redis 热缓存 / MySQL 回源</small></div>
+          <div id="rag-router" class="flow-node" style="--x:3;--y:0"><span class="node-index">04</span><b>问题路由</b><small>症状 / 科普 / 照护等分类</small></div>
+
+          <div id="rag-embedding" class="flow-node branch-vector" style="--x:0;--y:1"><span class="node-index">05A</span><b>BGE-M3</b><small>问题转向量</small></div>
+          <div id="rag-qdrant" class="flow-node branch-vector" style="--x:1;--y:1"><span class="node-index">05B</span><b>Qdrant</b><small>Top-K，阈值 0.72</small></div>
+          <div id="rag-local" class="flow-node branch-local" style="--x:2;--y:1"><span class="node-index">05C</span><b>本地知识库</b><small>300 条 JSON，关键词评分</small></div>
+          <div id="rag-docs" class="flow-node" style="--x:3;--y:1"><span class="node-index">06</span><b>证据片段</b><small>最多 4 条上下文</small></div>
+
+          <div id="rag-prompt" class="flow-node" style="--x:0;--y:2"><span class="node-index">07</span><b>Prompt 组装</b><small>概要 + 最近消息 + 证据</small></div>
+          <div id="rag-model" class="flow-node" style="--x:1;--y:2"><span class="node-index">08</span><b>DeepSeek</b><small>生成回答，关闭 thinking</small></div>
+          <div id="rag-web" class="flow-node branch-web" style="--x:2;--y:2"><span class="node-index">08W</span><b>联网检索</b><small>知识库为空时启用</small></div>
+          <div id="rag-stream" class="flow-node" style="--x:3;--y:2"><span class="node-index">09</span><b>SSE 输出</b><small>start / delta / complete</small></div>
+
+          <div id="rag-browser" class="flow-node" style="--x:1;--y:3"><span class="node-index">10</span><b>浏览器渲染</b><small>逐段显示，无 think 内容</small></div>
+          <div id="rag-save" class="flow-node" style="--x:2;--y:3"><span class="node-index">11</span><b>持久化与概要</b><small>MySQL；每 10 轮异步总结</small></div>
+          <div id="ragPacket" class="data-packet" aria-hidden="true"><span>Q</span></div>
+        </div>
+        <div class="legend">
+          <span><i class="legend-dot active-dot"></i>当前处理</span>
+          <span><i class="legend-dot done-dot"></i>已完成</span>
+          <span><i class="legend-dot dim-dot"></i>本次未走分支</span>
+        </div>
+      </div>
+
+      <aside class="inspector-card">
+        <span class="section-kicker">CURRENT STEP</span>
+        <h2 id="stepTitle">等待开始</h2>
+        <p id="stepDetail">点击“播放”或“单步”，观察请求、证据和回答在系统中移动。</p>
+        <dl id="dataList" class="data-list"></dl>
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><b>rag-trace.log</b></div>
+          <div id="terminalBody" class="terminal-body" aria-live="polite"></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="notes-grid">
+      <article><span>01</span><h3>记忆不是全量塞入 Prompt</h3><p>读取滚动概要与尚未被概要覆盖的近期消息，控制上下文长度；每 10 轮在独立线程刷新概要。</p></article>
+      <article><span>02</span><h3>向量服务故障可降级</h3><p>Embedding 或 Qdrant 异常时转本地关键词检索；两者都没有证据时，按配置调用联网检索。</p></article>
+      <article><span>03</span><h3>只有模型路径是真上游流</h3><p>DeepSeek Chat Completion 持续产生 delta；联网结果、规则答复与本地兜底由服务端切片为 SSE。</p></article>
+    </section>
+  </main>
+  <script src="rag-animation.js"></script>
+</body>
+</html>

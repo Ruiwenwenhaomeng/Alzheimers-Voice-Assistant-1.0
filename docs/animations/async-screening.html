@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>多线程异步筛查动画</title>
+  <link rel="stylesheet" href="animation.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="hero compact">
+      <a class="back-link" href="index.html">← 返回动画目录</a>
+      <p class="eyebrow">RABBITMQ · WORKER POOL · PDF PIPELINE</p>
+      <h1>三个任务如何并行跑到最终 PDF</h1>
+      <p class="hero-copy">动画展示当前异步筛查实现：事务 Outbox、RabbitMQ、多个 Python Worker、Java 结果线程池和单线程 PDF 生成器。每个任务内部仍按“转写 → 特征 → LLM → 结果 → PDF”顺序执行。</p>
+    </header>
+
+    <section class="toolbar" aria-label="动画控制器">
+      <div class="control-group">
+        <button id="playButton" class="primary-button" type="button">▶ 播放</button>
+        <button id="stepButton" type="button">单步</button>
+        <button id="resetButton" type="button">重播</button>
+      </div>
+      <label>速度
+        <select id="speedSelect">
+          <option value="0.7">0.7×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.6">1.6×</option>
+          <option value="2.2">2.2×</option>
+        </select>
+      </label>
+      <div class="progress-wrap" aria-label="动画进度">
+        <span id="progressText">0 / 18</span>
+        <div class="progress-track"><span id="progressBar"></span></div>
+      </div>
+    </section>
+
+    <section class="demo-grid">
+      <div class="board-card">
+        <div class="board-heading">
+          <div><span class="section-kicker">MULTI-JOB TIMELINE</span><h2>任务位置与排队状态</h2></div>
+          <span id="tickBadge" class="status-pill">T+00</span>
+        </div>
+        <div class="timeline-scroll">
+          <div class="screening-board">
+            <div class="stage-row">
+              <div id="stage-0" class="stage-cell"><b>浏览器上传</b><small>音频 / 看图说话<br>同意筛查</small></div>
+              <div id="stage-1" class="stage-cell"><b>MySQL + Outbox</b><small>任务与事件<br>同一事务</small></div>
+              <div id="stage-2" class="stage-cell"><b>RabbitMQ 请求队列</b><small>confirm / prefetch=1</small></div>
+              <div id="stage-3" class="stage-cell"><b>Python Worker</b><small>转写 → 特征 → LLM</small></div>
+              <div id="stage-4" class="stage-cell"><b>analysis.json</b><small>原子写入 + SHA256</small></div>
+              <div id="stage-5" class="stage-cell"><b>Result 线程池</b><small>默认 2 线程</small></div>
+              <div id="stage-6" class="stage-cell"><b>诊断结果 + PDF 队列</b><small>持久化并发出事件</small></div>
+              <div id="stage-7" class="stage-cell"><b>PDF 线程</b><small>默认 1 线程</small></div>
+              <div id="stage-8" class="stage-cell"><b>完成 / 下载</b><small>COMPLETED 100%</small></div>
+            </div>
+            <div class="lane-labels">
+              <div class="job-lane" data-label="任务 A · 用户甲"><div id="task-a" class="task-chip task-a" style="--stage:0">等待进入</div></div>
+              <div class="job-lane" data-label="任务 B · 用户乙"><div id="task-b" class="task-chip task-b" style="--stage:0">等待进入</div></div>
+              <div class="job-lane" data-label="任务 C · 用户丙"><div id="task-c" class="task-chip task-c" style="--stage:0">等待进入</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="metrics-row">
+          <div class="metric"><small>请求队列</small><b id="requestCount">0</b></div>
+          <div class="metric"><small>结果队列</small><b id="resultCount">0</b></div>
+          <div class="metric"><small>PDF 队列</small><b id="pdfCount">0</b></div>
+          <div class="metric"><small>已完成</small><b id="completeCount">0 / 3</b></div>
+        </div>
+        <p class="architecture-note">并发发生在“多个任务之间”。同一个 Python Worker 对一条任务内部顺序执行转写、特征提取和 LLM 分析；Worker 数量决定可同时处理多少条任务。PDF 默认只有 1 个执行线程，因此多个结果同时到达时会在 PDF 队列中等待。</p>
+      </div>
+
+      <aside class="inspector-card">
+        <span class="section-kicker">WORKER ACTIVITY</span>
+        <h2 id="stepTitle">等待开始</h2>
+        <p id="stepDetail">播放后可看到不同颜色的任务跨服务流动，以及线程被占用、释放和重新调度。</p>
+        <div class="thread-rack">
+          <div class="thread-group">
+            <h3>Python 进程 · 并发数 2（动画演示）</h3>
+            <div class="thread-slots"><div id="python-1" class="thread-slot"><b>worker-1</b><small>空闲</small></div><div id="python-2" class="thread-slot"><b>worker-2</b><small>空闲</small></div></div>
+          </div>
+          <div class="thread-group">
+            <h3>Java 结果执行器 · 默认 2 线程</h3>
+            <div class="thread-slots"><div id="result-1" class="thread-slot"><b>screening-result-1</b><small>空闲</small></div><div id="result-2" class="thread-slot"><b>screening-result-2</b><small>空闲</small></div></div>
+          </div>
+          <div class="thread-group">
+            <h3>Java PDF 执行器 · 默认 1 线程</h3>
+            <div class="thread-slots"><div id="pdf-1" class="thread-slot"><b>screening-pdf-1</b><small>空闲</small></div></div>
+          </div>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar"><span></span><span></span><span></span><b>screening-events.log</b></div>
+          <div id="terminalBody" class="terminal-body" aria-live="polite"></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="notes-grid">
+      <article><span>01</span><h3>任务创建不会丢消息</h3><p><code>screening_task</code> 与 <code>outbox_event</code> 同事务写入，Outbox Publisher 再可靠投递到 RabbitMQ。</p></article>
+      <article><span>02</span><h3>结果消费具有幂等保护</h3><p>Java 消费前检查事件是否已处理，并校验任务归属、产物路径和 SHA256，避免重复落库与错误文件。</p></article>
+      <article><span>03</span><h3>前端退出不影响后台任务</h3><p>状态保存在数据库，任务由队列驱动；页面每 5 秒轮询，离开后重新进入仍可查看进度并下载 PDF。</p></article>
+    </section>
+  </main>
+  <script src="screening-animation.js"></script>
+</body>
+</html>
