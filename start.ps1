@@ -62,12 +62,12 @@ function Stop-ManagedScreeningWorker {
         [int] $ProcessId
     )
     $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
-    if ($null -eq $processInfo -or $processInfo.CommandLine -notmatch "app\.workers\.combined") {
+    if ($null -eq $processInfo -or $processInfo.CommandLine -notmatch "app\.workers\.(combined|pipeline)") {
         return $false
     }
 
     $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=$ProcessId" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match "app\.workers\.combined" })
+        Where-Object { $_.CommandLine -match "app\.workers\.(combined|pipeline)" })
     foreach ($child in $children) {
         Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
     }
@@ -360,14 +360,34 @@ function Ensure-EmbeddingCudaTorch {
 }
 
 function Get-ScreeningWorkerCount {
+    $configured = $env:SCREENING_TRANSCRIPTION_WORKERS
+    if ([string]::IsNullOrWhiteSpace($configured)) {
+        $configured = $env:SCREENING_WORKER_CONCURRENCY
+    }
     $count = 1
-    if (-not [string]::IsNullOrWhiteSpace($env:SCREENING_WORKER_CONCURRENCY)) {
+    if (-not [string]::IsNullOrWhiteSpace($configured)) {
         $parsed = 0
-        if ([int]::TryParse($env:SCREENING_WORKER_CONCURRENCY, [ref] $parsed)) {
+        if ([int]::TryParse($configured, [ref] $parsed)) {
             $count = [Math]::Max(1, [Math]::Min(4, $parsed))
         }
     }
     return $count
+}
+
+function Get-ScreeningStageWorkerCount {
+    param(
+        [string] $Name,
+        [int] $Default = 1
+    )
+    $value = (Get-Item -Path "Env:$Name" -ErrorAction SilentlyContinue).Value
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $Default
+    }
+    $parsed = 0
+    if (-not [int]::TryParse($value, [ref] $parsed)) {
+        throw "$Name must be a positive integer."
+    }
+    return [Math]::Max(1, [Math]::Min(8, $parsed))
 }
 
 function Ensure-EmbeddingPython {
@@ -689,7 +709,11 @@ Set-EnvValueFromDotEnv "SCREENING_OUTBOX_DELAY_MS"
 Set-EnvValueFromDotEnv "SCREENING_OUTBOX_BATCH_SIZE"
 Set-EnvValueFromDotEnv "SCREENING_PUBLISH_CONFIRM_TIMEOUT_MS"
 Set-EnvValueFromDotEnv "SCREENING_WORKER_CONCURRENCY"
+Set-EnvValueFromDotEnv "SCREENING_TRANSCRIPTION_WORKERS"
+Set-EnvValueFromDotEnv "SCREENING_FEATURE_WORKERS"
+Set-EnvValueFromDotEnv "SCREENING_LLM_WORKERS"
 Set-EnvValueFromDotEnv "SCREENING_WORKER_MAX_RETRIES"
+Set-EnvValueFromDotEnv "SCREENING_RETRY_DELAY_MS"
 if ([string]::IsNullOrWhiteSpace($env:DEEPSEEK_BASE_URL)) {
     $env:DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 }
@@ -1143,42 +1167,58 @@ if ($env:SCREENING_ASYNC_ENABLED -eq "true") {
         exit 1
     }
     $workerCount = Get-ScreeningWorkerCount
+    $featureWorkerCount = Get-ScreeningStageWorkerCount -Name "SCREENING_FEATURE_WORKERS" -Default 2
+    $llmWorkerCount = Get-ScreeningStageWorkerCount -Name "SCREENING_LLM_WORKERS" -Default 2
     $env:AUDIO_ROOT = $env:AUDIO_STORAGE_DIR
     $baseWorkerDeviceIndex = 0
     [void] [int]::TryParse($env:WHISPER_DEVICE_INDEX, [ref] $baseWorkerDeviceIndex)
-    for ($workerIndex = 1; $workerIndex -le $workerCount; $workerIndex++) {
-        $pidFile = Join-Path $env:SCREENING_ARTIFACT_DIR "worker-$workerIndex.pid"
-        $running = $false
-        if (Test-Path -LiteralPath $pidFile) {
-            $savedPid = 0
-            if ([int]::TryParse((Get-Content -LiteralPath $pidFile -Raw).Trim(), [ref] $savedPid)) {
-                $running = $null -ne (Get-Process -Id $savedPid -ErrorAction SilentlyContinue)
-                if ($running -and $env:SCREENING_REQUIRE_AI -eq "true") {
-                    Write-Host "Restarting screening worker $workerIndex to apply verified AI configuration..."
-                    $running = -not (Stop-ManagedScreeningWorker $savedPid)
-                }
+    $workerLogsDir = Join-Path $RuntimeRoot "logs"
+    New-Item -ItemType Directory -Path $workerLogsDir -Force | Out-Null
+
+    # Combined workers consume the same entry queue and must not coexist with the staged pipeline.
+    $managedPidFiles = @(
+        Get-ChildItem -LiteralPath $env:SCREENING_ARTIFACT_DIR -Filter "worker-*.pid" -File -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath $env:SCREENING_ARTIFACT_DIR -Filter "pipeline-*.pid" -File -ErrorAction SilentlyContinue
+    )
+    foreach ($managedPidFile in $managedPidFiles) {
+        $savedPid = 0
+        if ([int]::TryParse((Get-Content -LiteralPath $managedPidFile.FullName -Raw).Trim(), [ref] $savedPid) -and
+                $null -ne (Get-Process -Id $savedPid -ErrorAction SilentlyContinue)) {
+            Write-Host "Stopping previous screening worker PID $savedPid before pipeline startup..."
+            if (-not (Stop-ManagedScreeningWorker $savedPid)) {
+                throw "Unable to stop managed screening worker PID $savedPid."
             }
         }
-        if (-not $running) {
-            $workerDeviceIndex = if ($env:WHISPER_DEVICE -eq "cuda") {
+        Remove-Item -LiteralPath $managedPidFile.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    $pipelineStages = @(
+        [pscustomobject]@{ Name = "transcription"; Count = $workerCount; UsesGpu = $true },
+        [pscustomobject]@{ Name = "features"; Count = $featureWorkerCount; UsesGpu = $false },
+        [pscustomobject]@{ Name = "llm"; Count = $llmWorkerCount; UsesGpu = $false }
+    )
+    foreach ($stage in $pipelineStages) {
+        for ($workerIndex = 1; $workerIndex -le $stage.Count; $workerIndex++) {
+            $workerDeviceIndex = if ($stage.UsesGpu -and $env:WHISPER_DEVICE -eq "cuda") {
                 $baseWorkerDeviceIndex + $workerIndex - 1
             } else {
                 0
             }
-            Write-Host "Starting RabbitMQ screening worker $workerIndex/$workerCount on $($env:WHISPER_DEVICE):$workerDeviceIndex..."
-            $workerLogsDir = Join-Path $RuntimeRoot "logs"
-            New-Item -ItemType Directory -Path $workerLogsDir -Force | Out-Null
+            $deviceLabel = if ($stage.UsesGpu) { "$($env:WHISPER_DEVICE):$workerDeviceIndex" } else { "CPU/network" }
+            Write-Host "Starting $($stage.Name) worker $workerIndex/$($stage.Count) on $deviceLabel..."
             $previousWorkerDeviceIndex = $env:WHISPER_DEVICE_INDEX
             $previousWorkerId = $env:SCREENING_WORKER_ID
             try {
-                $env:WHISPER_DEVICE_INDEX = "$workerDeviceIndex"
-                $env:SCREENING_WORKER_ID = "$workerIndex"
+                if ($stage.UsesGpu) {
+                    $env:WHISPER_DEVICE_INDEX = "$workerDeviceIndex"
+                }
+                $env:SCREENING_WORKER_ID = "$($stage.Name)-$workerIndex"
                 $workerProcess = Start-Process -FilePath $workerPython `
-                    -ArgumentList "-m", "app.workers.combined" `
+                    -ArgumentList "-m", "app.workers.pipeline", $stage.Name `
                     -WorkingDirectory $ScreeningDir `
                     -WindowStyle Hidden `
-                    -RedirectStandardOutput (Join-Path $workerLogsDir "screening-worker-$workerIndex.out.log") `
-                    -RedirectStandardError (Join-Path $workerLogsDir "screening-worker-$workerIndex.err.log") `
+                    -RedirectStandardOutput (Join-Path $workerLogsDir "screening-$($stage.Name)-worker-$workerIndex.out.log") `
+                    -RedirectStandardError (Join-Path $workerLogsDir "screening-$($stage.Name)-worker-$workerIndex.err.log") `
                     -PassThru
             } finally {
                 $env:WHISPER_DEVICE_INDEX = $previousWorkerDeviceIndex
@@ -1188,6 +1228,7 @@ if ($env:SCREENING_ASYNC_ENABLED -eq "true") {
                     $env:SCREENING_WORKER_ID = $previousWorkerId
                 }
             }
+            $pidFile = Join-Path $env:SCREENING_ARTIFACT_DIR "pipeline-$($stage.Name)-$workerIndex.pid"
             Set-Content -LiteralPath $pidFile -Value $workerProcess.Id -Encoding ASCII
         }
     }

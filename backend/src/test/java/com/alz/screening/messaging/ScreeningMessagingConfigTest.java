@@ -35,6 +35,8 @@ class ScreeningMessagingConfigTest {
             assertThat(context.getBeansOfType(TaskExecutor.class))
                     .containsKeys("screeningResultExecutor", "screeningStatusExecutor", "screeningPdfExecutor");
             assertThat(context.getBean("transcriptionBinding")).isNotNull();
+            assertThat(context.getBean("featuresBinding")).isNotNull();
+            assertThat(context.getBean("llmBinding")).isNotNull();
             assertThat(context.getBean("deadLetterBinding")).isNotNull();
         }
     }

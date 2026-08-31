@@ -38,7 +38,12 @@ class ArtifactStore:
         return attempt <= cancelled_attempt
 
     def write_analysis(self, task_id: str, result: Mapping[str, Any]) -> tuple[str, str]:
-        destination = self.analysis_path(task_id)
+        return self.write_document(task_id, "analysis.json", result)
+
+    def write_document(
+        self, task_id: str, filename: str, result: Mapping[str, Any]
+    ) -> tuple[str, str]:
+        destination = self.task_path(task_id, filename)
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(".json.tmp")
         encoded = json.dumps(
@@ -49,15 +54,35 @@ class ArtifactStore:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, destination)
-        return f"{task_id}/analysis.json", hashlib.sha256(encoded).hexdigest()
+        return f"{task_id}/{filename}", hashlib.sha256(encoded).hexdigest()
 
     def existing_analysis(self, task_id: str) -> tuple[str, str] | None:
-        path = self.analysis_path(task_id)
+        return self.existing_document(task_id, "analysis.json")
+
+    def existing_document(self, task_id: str, filename: str) -> tuple[str, str] | None:
+        path = self.task_path(task_id, filename)
         if not path.is_file():
             return None
         data = path.read_bytes()
         json.loads(data.decode("utf-8"))
-        return f"{task_id}/analysis.json", hashlib.sha256(data).hexdigest()
+        return f"{task_id}/{filename}", hashlib.sha256(data).hexdigest()
+
+    def read_document(
+        self, task_id: str, filename: str, artifact_uri: str, expected_sha256: str
+    ) -> dict[str, Any]:
+        if artifact_uri != f"{task_id}/{filename}":
+            raise ValueError("invalid artifact URI")
+        if not expected_sha256 or len(expected_sha256) != 64:
+            raise ValueError("invalid artifact checksum")
+        path = self.task_path(task_id, filename)
+        data = path.read_bytes()
+        actual = hashlib.sha256(data).hexdigest()
+        if actual.lower() != expected_sha256.lower():
+            raise ValueError("artifact checksum mismatch")
+        payload = json.loads(data.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("artifact payload must be an object")
+        return payload
 
     def existing_analysis_model(self, task_id: str) -> str | None:
         path = self.analysis_path(task_id)

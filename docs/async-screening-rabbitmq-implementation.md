@@ -61,13 +61,15 @@ Java RabbitMQ 消费链路使用三个有界线程池，互不占用 Tomcat 请�
 
 ## 3. Python Worker 实现
 
-入口为：
+三个阶段入口分别为：
 
 ```powershell
-python -m app.workers.combined
+python -m app.workers.pipeline transcription
+python -m app.workers.pipeline features
+python -m app.workers.pipeline llm
 ```
 
-Worker 以独立进程运行，每个进程消费一个任务，RabbitMQ `prefetch=1`。`SCREENING_WORKER_CONCURRENCY` 控制 `start.ps1` 启动的进程数，当前限制为 1～4。多个 Worker 可并行服务多个用户，但单条音频内部按“转录 -> 特征 -> 大模型”顺序执行，避免同一任务的阶段依赖被破坏。
+Worker 按“转录 -> 特征 -> 大模型”拆为三个独立队列，每个进程 `prefetch=1`。转录完成并写入带 attempt 的阶段产物后会立即 ACK 并领取下一条音频，不再等待 CPU 特征和远端 LLM。`SCREENING_TRANSCRIPTION_WORKERS`、`SCREENING_FEATURE_WORKERS`、`SCREENING_LLM_WORKERS` 分别控制三个池；旧的 `SCREENING_WORKER_CONCURRENCY` 仅作为转录池的兼容回退值。
 
 处理失败时，Worker 将消息发送到带 TTL 的重试队列；超过 `SCREENING_WORKER_MAX_RETRIES` 后发布失败状态并进入死信队列。已经生成且校验通过的任务产物会直接复用，避免消息重复投递造成重复大模型调用。
 
@@ -76,11 +78,13 @@ Worker 以独立进程运行，每个进程消费一个任务，RabbitMQ `prefet
 - 主交换机：`alz.screening.events.x`
 - 重试交换机：`alz.screening.retry.x`
 - 死信交换机：`alz.screening.dlx`
-- Python 请求队列：`alz.screening.transcription.q`
+- Python 转录队列：`alz.screening.transcription.q`
+- Python 特征队列：`alz.screening.features.q`
+- Python LLM 队列：`alz.screening.llm.q`
 - Java 结果队列：`alz.screening.result.java.q`
 - Java 状态队列：`alz.screening.status.java.q`
 - Java PDF 队列：`alz.pdf.generate.java.q`
-- Python 延迟重试队列：`alz.screening.transcription.retry.10s.q`
+- Python 延迟重试队列：每个阶段各有一个 `.retry.10s.q`
 - 公共死信队列：`alz.screening.dlq`
 
 消息只包含任务、用户、音频等 ID 和受控存储引用，不在 RabbitMQ 中传输音频、PDF 或完整分析内容。
@@ -110,7 +114,9 @@ RABBITMQ_PORT=5672
 RABBITMQ_VHOST=/alz
 RABBITMQ_USERNAME=alz_app
 RABBITMQ_PASSWORD=请替换为非默认强密码
-SCREENING_WORKER_CONCURRENCY=1
+SCREENING_TRANSCRIPTION_WORKERS=2
+SCREENING_FEATURE_WORKERS=2
+SCREENING_LLM_WORKERS=2
 ```
 
 Java、Python 和 Compose 必须使用相同的 RabbitMQ vhost、用户名和密码。异步功能默认关闭，便于完成数据库迁移和 RabbitMQ 部署后再显式启用。

@@ -31,6 +31,8 @@ public class ScreeningMessagingConfig {
     public static final String EXCHANGE = "alz.screening.events.x";
     public static final String DEAD_LETTER_EXCHANGE = "alz.screening.dlx";
     public static final String TRANSCRIPTION_QUEUE = "alz.screening.transcription.q";
+    public static final String FEATURES_QUEUE = "alz.screening.features.q";
+    public static final String LLM_QUEUE = "alz.screening.llm.q";
     public static final String RESULT_QUEUE = "alz.screening.result.java.q";
     public static final String STATUS_QUEUE = "alz.screening.status.java.q";
     public static final String PDF_QUEUE = "alz.pdf.generate.java.q";
@@ -48,6 +50,16 @@ public class ScreeningMessagingConfig {
     @Bean
     Queue screeningTranscriptionQueue() {
         return durableQueue(TRANSCRIPTION_QUEUE);
+    }
+
+    @Bean
+    Queue screeningFeaturesQueue() {
+        return durableQueue(FEATURES_QUEUE);
+    }
+
+    @Bean
+    Queue screeningLlmQueue() {
+        return durableQueue(LLM_QUEUE);
     }
 
     @Bean
@@ -76,6 +88,22 @@ public class ScreeningMessagingConfig {
             @Qualifier("screeningExchange") TopicExchange screeningExchange) {
         return BindingBuilder.bind(screeningTranscriptionQueue).to(screeningExchange)
                 .with("screening.requested.v1");
+    }
+
+    @Bean
+    Binding featuresBinding(
+            @Qualifier("screeningFeaturesQueue") Queue screeningFeaturesQueue,
+            @Qualifier("screeningExchange") TopicExchange screeningExchange) {
+        return BindingBuilder.bind(screeningFeaturesQueue).to(screeningExchange)
+                .with("screening.transcription.completed.v1");
+    }
+
+    @Bean
+    Binding llmBinding(
+            @Qualifier("screeningLlmQueue") Queue screeningLlmQueue,
+            @Qualifier("screeningExchange") TopicExchange screeningExchange) {
+        return BindingBuilder.bind(screeningLlmQueue).to(screeningExchange)
+                .with("screening.features.completed.v1");
     }
 
     @Bean

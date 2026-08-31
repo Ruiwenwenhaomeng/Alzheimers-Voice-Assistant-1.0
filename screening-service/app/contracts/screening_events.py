@@ -6,6 +6,27 @@ from typing import Any, Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 
+PIPELINE_INPUT_EVENTS = {
+    "screening.requested.v1",
+    "screening.transcription.completed.v1",
+    "screening.features.completed.v1",
+}
+
+SCREENING_EVENT_TYPES = PIPELINE_INPUT_EVENTS | {
+    "screening.transcription.started.v1",
+    "screening.features.started.v1",
+    "screening.llm.started.v1",
+    "screening.analysis.completed.v1",
+    "screening.stage.retrying.v1",
+    "screening.stage.failed.v1",
+    "screening.cancelled.v1",
+    "pdf.requested.v1",
+    "pdf.started.v1",
+    "pdf.completed.v1",
+    "pdf.failed.v1",
+}
+
+
 @dataclass(frozen=True)
 class ScreeningEvent:
     event_id: str
@@ -56,7 +77,7 @@ class ScreeningEvent:
         UUID(self.trace_id)
         if self.schema_version != 1:
             raise ValueError("unsupported screening event schema")
-        if self.event_type != "screening.requested.v1":
+        if self.event_type not in SCREENING_EVENT_TYPES:
             raise ValueError("unsupported screening event type")
         if self.user_id <= 0 or self.audio_id <= 0:
             raise ValueError("event userId/audioId must be positive")
@@ -80,9 +101,20 @@ class ScreeningEvent:
             "payload": dict(payload or {}),
         }
 
+    @property
+    def delivery_attempt(self) -> int:
+        try:
+            return max(0, int(self.payload.get("_deliveryAttempt", 0)))
+        except (TypeError, ValueError):
+            return 0
+
     def retry_message(self) -> dict[str, Any]:
+        retry_number = self.delivery_attempt + 1
+        payload = dict(self.payload)
+        payload["_deliveryAttempt"] = retry_number
         value = self.next_event(
-            "screening.requested.v1", f"requested-retry-{self.attempt + 1}", self.payload
+            self.event_type,
+            f"{self.event_type}-delivery-retry-{retry_number}",
+            payload,
         )
-        value["attempt"] = self.attempt + 1
         return value

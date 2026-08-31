@@ -3,7 +3,7 @@
 ## 当前加速范围
 
 - `faster-whisper` 使用 CTranslate2 在本机 NVIDIA GPU 上执行语音转写。
-- 两个异步筛查 Worker 从 `WHISPER_DEVICE_INDEX` 开始按序绑定 GPU。基准索引为 `0` 时，Worker 1 使用 GPU 0，Worker 2 使用 GPU 1。
+- 两个转录 Worker 从 `WHISPER_DEVICE_INDEX` 开始按序绑定 GPU。基准索引为 `0` 时，转录 Worker 1 使用 GPU 0，转录 Worker 2 使用 GPU 1。
 - BGE-M3 Embedding 使用 CUDA PyTorch；默认绑定 `RAG_EMBEDDING_DEVICE_INDEX` 指定的 GPU。
 - MFCC、录音质量检查和 jieba 语义统计仍在 CPU 执行。
 - DeepSeek 推理位于远端 API，本机 GPU 不参与 DeepSeek 模型计算。
@@ -13,7 +13,9 @@
 项目根目录 `.env`：
 
 ```dotenv
-SCREENING_WORKER_CONCURRENCY=2
+SCREENING_TRANSCRIPTION_WORKERS=2
+SCREENING_FEATURE_WORKERS=2
+SCREENING_LLM_WORKERS=2
 
 WHISPER_DEVICE=cuda
 WHISPER_DEVICE_INDEX=0

@@ -243,7 +243,7 @@ alz.screening.events.x
 | 队列 | Routing key | 消费者 | 初始并发 |
 |---|---|---|---:|
 | `alz.screening.transcription.q` | `screening.requested.v1` | Python Whisper | 每个模型/GPU 1 |
-| `alz.screening.feature.q` | `screening.transcription.completed.v1` | Python 特征处理 | 2～4 |
+| `alz.screening.features.q` | `screening.transcription.completed.v1` | Python 特征处理 | 2～4 |
 | `alz.screening.llm.q` | `screening.features.completed.v1` | Python DeepSeek | 2～4 |
 | `alz.screening.result.java.q` | `screening.analysis.completed.v1` | Java 结果入库 | 2～4 |
 | `alz.screening.status.java.q` | `screening.#` | Java 状态投影 | 2 |

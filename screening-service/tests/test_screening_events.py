@@ -29,10 +29,11 @@ def test_parses_cross_language_event_and_creates_deterministic_stage_id():
     assert first["schemaVersion"] == 1
 
 
-def test_retry_message_increments_attempt():
+def test_retry_message_keeps_task_attempt_and_increments_delivery_attempt():
     event = ScreeningEvent.from_message(event_message())
 
     retry = event.retry_message()
 
-    assert retry["attempt"] == 1
+    assert retry["attempt"] == 0
     assert retry["eventType"] == "screening.requested.v1"
+    assert retry["payload"]["_deliveryAttempt"] == 1

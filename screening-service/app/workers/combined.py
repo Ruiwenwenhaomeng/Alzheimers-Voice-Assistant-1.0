@@ -61,6 +61,8 @@ class CombinedScreeningWorker:
         try:
             raw = json.loads(body.decode("utf-8"))
             event = ScreeningEvent.from_message(raw)
+            if event.event_type != "screening.requested.v1":
+                raise PermanentScreeningError("event routed to the wrong worker")
             self._process(event)
             channel.basic_ack(method.delivery_tag)
         except ScreeningCancelled:
@@ -87,12 +89,12 @@ class CombinedScreeningWorker:
             )
             if event is None:
                 channel.basic_reject(method.delivery_tag, requeue=False)
-            elif event.attempt < self._max_retries:
+            elif event.delivery_attempt < self._max_retries:
                 self._publish(
                     "screening.stage.retrying.v1",
                     event.next_event(
                         "screening.stage.retrying.v1",
-                        f"retrying-{event.attempt}",
+                        f"retrying-{event.attempt}-{event.delivery_attempt + 1}",
                         {
                             "stage": "PROCESSING",
                             "progress": 20,
